@@ -1,0 +1,53 @@
+# Qwen3.8-Flash-Next on one Intel Arc Pro B70 through XeStrata. Settings come from .env (template: .env.example).
+# First run: scripts/download-model.sh, then scripts/setup.sh, then `docker compose up -d`. See AGENTS.md.
+name: qwen38-flash-next
+services:
+  qwen38:
+    build: ./docker
+    image: ${IMAGE:-local/xestrata-qwen38:xe0.1.40.2.2}
+    container_name: ${CONTAINER_NAME:-qwen38-flash-next}
+    restart: unless-stopped
+    # XeStrata's launcher ignores SIGTERM as PID 1, so without an init every stop waits the full grace period and
+    # ends in a SIGKILL. Under Docker's init a stop takes about 2.5 s.
+    init: true
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-8000}:8000"
+    devices:
+      - /dev/dri:/dev/dri
+    # The experts kept in RAM are locked so they are never swapped out.
+    ulimits:
+      memlock: -1
+    # The image encoder hands pictures to the engine through /dev/shm.
+    shm_size: "8gb"
+    environment:
+      API_KEY: ${API_KEY:?set API_KEY in .env}
+      SERVED_NAME: ${SERVED_NAME:-qwen38}
+      MAX_CONTEXT: ${MAX_CONTEXT:-262144}
+      SAMPLING: ${SAMPLING:-}
+      VRAM_RESERVE_MIB: ${VRAM_RESERVE_MIB:-2048}
+      RESIDENT_EXPERTS: ${RESIDENT_EXPERTS:-1}
+      CONVERSATION_CACHE_MIB: ${CONVERSATION_CACHE_MIB:-8192}
+      CONVERSATION_CACHE_SLOTS: ${CONVERSATION_CACHE_SLOTS:-4}
+      PCIE_FRAC: ${PCIE_FRAC:-0.75}
+      SPEC_MIN_P: ${SPEC_MIN_P:-0.70}
+      VISION_MAX_TOKENS: ${VISION_MAX_TOKENS:-1024}
+      VISION_THREADS: ${VISION_THREADS:-}
+      VISION_GPU: ${VISION_GPU:-0}
+      GPU_PCI: ${GPU_PCI:-}
+      ENGINE_ARGS: ${ENGINE_ARGS:-}
+    volumes:
+      - /dev/dri/by-path:/dev/dri/by-path:ro
+      - ${MODELS_DIR:?set MODELS_DIR in .env}:/models:ro
+      - ${STATE_DIR:?set STATE_DIR in .env}:/x
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health | grep -q '\"loaded\": true'"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      retries: 3
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
