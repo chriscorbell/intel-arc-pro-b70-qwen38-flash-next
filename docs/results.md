@@ -11,43 +11,41 @@
 | Storage | WD_BLACK SN7100 2 TB NVMe |
 | OS | Ubuntu Server 26.04.1, kernel 7.0.0-31-generic, in-kernel `xe` driver |
 | Docker | 29.1.3, Compose 2.40.3 |
-| In the image | XeStrata xe0.1.40.2.2, Level Zero and OpenCL runtime 26.05.37020.3, oneMKL 2026.1 |
+| In the image | XeStrata xe0.1.45-1, Level Zero loader 1.28.2, compute runtime 26.05.37020.3, IGC 2.28.4, oneMKL 2026.2 |
 
 Every number below is at concurrency 1.
 
 ## This repository's checks, from a clean setup
 
-Run on 2026-10-12 exactly as [AGENTS.md](../AGENTS.md) describes, with a fresh `STATE_DIR` and the image built from scratch: `scripts/setup.sh` took 4.5 minutes (most of it the MTP layer download), the model loaded 56 s after `docker compose up -d` with 10,942 experts in VRAM, and about 29 GiB of RAM was still available.
+Run on 2026-10-19 exactly as [AGENTS.md](../AGENTS.md) describes, with a fresh `STATE_DIR` and the image built without the build cache: the build took 3.6 minutes, `scripts/setup.sh` 4.6 minutes (most of it the MTP layer download), and the model loaded 95 s after `docker compose up -d` with 10,983 experts (20.85 GiB) in VRAM.
 
 `scripts/smoke_test.py`: 26 of 26.
 
-`scripts/bench.py`, two runs (the second against an identical deployment of the same configuration):
+`scripts/bench.py`, two runs one after the other, and the same bench on 2026-10-12 on two identical deployments of the earlier setup: xe0.1.40.2.2, `PCIE_FRAC=0.75`, every physical core but one as a CPU worker, and neither of the engine variables in [settings.md](settings.md), which that release did not have:
 
-| | Run 1 | Run 2 |
-|---|---:|---:|
-| Warm 4K code, thinking off, decode tok/s (median of 3) | 79.5 | 68.3 |
-| Warm 4K code, xhigh, decode tok/s (median of 3) | 58.0 | 60.1 |
-| Cold 8,534-token prompt, time to first token | 5.45 s | 5.64 s |
-| Cold 33,852-token prompt | 21.51 s | 21.30 s |
-| Cold 67,703-token prompt | 32.25 s | 32.13 s |
+| | Run 1 | Run 2 | Before, run 1 | Before, run 2 |
+|---|---:|---:|---:|---:|
+| Warm 4K code, thinking off, decode tok/s (median of 3) | 89.5 | 89.2 | 79.5 | 68.3 |
+| Warm 4K code, xhigh, decode tok/s (median of 3) | 66.5 | 66.0 | 58.0 | 60.1 |
+| Cold 8.5K-token prompt, time to first token | 4.72 s | 4.58 s | 5.45 s | 5.64 s |
+| Cold 34K-token prompt | 15.84 s | 15.55 s | 21.51 s | 21.30 s |
+| Cold 68K-token prompt | 30.75 s | 30.95 s | 32.25 s | 32.13 s |
 
-Single decode runs ranged from 66.2 to 81.2 tok/s with thinking off and 53.4 to 61.5 at xhigh. Decode speed depends on how predictable the output is, and with sampling on that varies run to run; a median within about 10% of these is the same result.
+Single decode runs ranged from 81.8 to 94.0 tok/s with thinking off and 62.9 to 74.1 at xhigh. Decode speed depends on how predictable the output is, and with sampling on that varies run to run; a median within about 10% of these is the same result.
 
-## The same configuration, measured with other prompts
-
-An earlier harness with different prompt text measured warm 4K decode at 72.9 to 76.6 tok/s thinking off and 57.2 to 60.3 at xhigh, and cold 8K, 32K and 64K prompts in 4.9, 15.3 and 29.1 s. Prompt speed depends on the text, so compare your results with the table above, which uses this repository's `bench.py`.
+Prompt speed depends on the text, so compare your results with this table, which uses this repository's `bench.py`. Another harness on the reference machine, with different prompt text, reads a cold 32K prompt about 10% faster.
 
 ## Long context
 
-A 249,987-token prompt with a fact to retrieve, thinking at xhigh: 3 of 3 retrieval and continuation checks. Cold time to first token 116.4 s (2,158 tok/s); the same prompt again, cached, 0.52 s; a continuation 0.84 s. Decode at 250K was 70 to 85 tok/s, with 94% of MTP drafts accepted. This ran with all experts in RAM (`RESIDENT_EXPERTS=0`) and no conversation cache, with the same number of experts in VRAM as the default.
+A 249,987-token prompt with a fact to retrieve, thinking at xhigh: 3 of 3 retrieval and continuation checks. Cold time to first token 115.7 s (2,161 tok/s); the same prompt again 3.35 s with 249,982 tokens cached; a follow-up that adds to the conversation 0.36 s. Decode at 250K was 74 to 83 tok/s, measured at the client. This ran on 2026-10-19 with this repository's defaults. On xe0.1.40.2.2 the repeated prompt took 0.52 s and the follow-up 0.84 s.
 
 ## Images
 
-On six 2560x1600 console screenshots with 10 to 12 px text, five questions each (tables, logs, status bars, checkboxes, click targets), thinking off: 28 of 30 at the default 1,024 image tokens, with every click target right. Both misses were one character of 10 px text. The first question about a new screenshot took 5.4 to 5.8 s; later questions about it 1.9 s.
+Measured on 2026-10-11 with xe0.1.40.2.2 and the earlier settings; on xe0.1.45-1 the smoke test's two image checks pass. On six 2560x1600 console screenshots with 10 to 12 px text, five questions each (tables, logs, status bars, checkboxes, click targets), thinking off: 28 of 30 at the default 1,024 image tokens, with every click target right. Both misses were one character of 10 px text. The first question about a new screenshot took 5.4 to 5.8 s; later questions about it 1.9 s.
 
 ## Coding quality
 
-Both evaluations ran through headless Claude Code at effort xhigh, one task at a time, with both models sampling as their model cards say. The comparison model is Qwen3.8-27B (EXL3 4.00 bpw, MTP) on the same B70 through a vLLM-based engine, which decodes faster at short context (about 90 tok/s) but wrote more tokens on these tasks.
+Measured on 2026-10-11 with xe0.1.40.2.2 and the earlier settings, and not rerun since. Both evaluations ran through headless Claude Code at effort xhigh, one task at a time, with both models sampling as their model cards say. The comparison model is Qwen3.8-27B (EXL3 4.00 bpw, MTP) on the same B70 through a vLLM-based engine, which decodes faster at short context (about 90 tok/s) but wrote more tokens on these tasks.
 
 - **Sixteen real bug fixes** merged in 2026 into click, werkzeug, marshmallow and Python-Markdown, each checked to fail before the fix and pass after it. Flash-Next passed 15 of 16 with no regressions in 4,021 s; the 27B passed 15 of 16 in 7,310 s. Both failed the same task. In blind pairwise reviews of the patches (each pair judged in both orders), two judge models (Claude Opus 5.5 and Claude Fable 5.1) each preferred Flash-Next's patches 15 to 1, mostly for their tests and changelog entries; on the library source alone it was 6 to 4 with 6 ties.
 - **Aider's polyglot benchmark, Python** (34 exercises, two attempts each, 900 s per attempt), with the agent cut off from the internet and from the benchmark's files: Flash-Next 31 of 34 (21 on the first attempt) in 3.67 hours; the 27B 27 of 34 (11) in 6.30 hours. Runs of one configuration on this set have moved by three passes, so read the totals as close; the first-attempt and time differences are larger than that.

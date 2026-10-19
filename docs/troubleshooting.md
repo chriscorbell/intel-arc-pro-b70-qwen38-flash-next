@@ -24,7 +24,8 @@ Before you restart anything that failed, save the evidence: `docker logs qwen38-
 | `recipe: no MTP draft layer` | `scripts/setup.sh` has not run against this `STATE_DIR`. |
 | `recipe: swap is on and GPU page faults are recoverable` | The page-fault keys were removed from the environment. Restore `NEOReadDebugKeys=1 EnableRecoverablePageFaults=0` (the image sets them). |
 | `docker compose stop` takes 60 s and the container exits 137 | `init: true` is missing from `compose.yaml`. |
-| First start after a reboot is slower than 55 s | The model files are not in the page cache yet. The reference loads in 55 s from a cold cache; allow a few minutes on slower disks. |
+| First start after a reboot is slower than 95 s | The model files are not in the page cache yet. Allow a few minutes on slower disks. |
+| Cold prompts take about twice as long as in [results.md](results.md), and the `engine started` line in the engine's log has `--prefill 2048` | XeStrata's launcher misread its own version and rewrote `--prefill auto` (see [settings.md](settings.md)). The Dockerfile patches this for the pinned release; if you changed the release, check that the patch step still applies. |
 
 ## While serving
 
@@ -36,7 +37,7 @@ Before you restart anything that failed, save the evidence: `docker logs qwen38-
 | Claude Code gets a 401 after minutes of retries | It inherited session variables that override the token. See [clients.md](clients.md). |
 | The first question about a new image takes 5 to 6 s | The CPU image encoder. Repeat questions about the same image take about 2 s. `VISION_GPU=1` is faster at larger image budgets; see [settings.md](settings.md). |
 | A second client waits | One request at a time, by design. See [settings.md](settings.md). |
-| Decode much slower than [results.md](results.md) | Check `docker logs` for the expert count (`filling the GPU's expert cache (N experts ...)`; about 10,940 on the reference), that nothing else uses the GPU, and the CPU's load. Fewer or slower cores lower decode, because the CPU computes the experts not in VRAM. |
+| Decode much slower than [results.md](results.md) | Check `docker logs` for the expert count (`filling the GPU's expert cache (N experts ...)`; about 10,980 on the reference), that nothing else uses the GPU, and the CPU's load. Fewer or slower cores lower decode, because the CPU computes the experts not in VRAM. |
 
 ## Monitoring the GPU
 

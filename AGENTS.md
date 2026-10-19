@@ -40,7 +40,7 @@ set -a; . ./.env; set +a
 until curl -fsS "http://$BIND_ADDR:$PORT/health" | grep -q '"loaded": true'; do sleep 5; done
 ```
 
-The reference machine loads in 55 s; allow up to 10 minutes on a first start. Done when `/health` reports `"loaded": true`. If the container exits or keeps restarting, go to [docs/troubleshooting.md](docs/troubleshooting.md).
+The reference machine loads in 95 s; allow up to 10 minutes on a first start. Done when `/health` reports `"loaded": true`. If the container exits or keeps restarting, go to [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ### 6. Verify
 

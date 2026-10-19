@@ -3,13 +3,14 @@
 # the MTP draft layer from the original Qwen checkpoint (about 5 GB download, 6.5 GB on disk) into STATE_DIR.
 # Run after scripts/download-model.sh. The GPU may be busy; this does not start the model.
 #   scripts/setup.sh
-#   scripts/setup.sh --calibrate     also runs XeStrata's calibration and prints the --pcie-frac and --spec-min-p it
-#                                    chooses (needs the GPU free; set PCIE_FRAC and SPEC_MIN_P in .env to use them)
+#   scripts/setup.sh --calibrate     also runs XeStrata's calibration (about 25 minutes) and prints the settings it
+#                                    chooses: --pcie-frac, --spec-min-p, --pool-workers (needs the GPU free; set
+#                                    PCIE_FRAC, SPEC_MIN_P and POOL_WORKERS in .env to use them)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] && set -a && . ./.env && set +a
 : "${MODELS_DIR:?set MODELS_DIR in .env}" "${STATE_DIR:?set STATE_DIR in .env}"
-image=${IMAGE:-local/xestrata-qwen38:xe0.1.40.2.2}
+image=${IMAGE:-local/xestrata-qwen38:xe0.1.45-1}
 
 docker image inspect "$image" >/dev/null 2>&1 || docker compose build
 mkdir -p "$STATE_DIR/home"

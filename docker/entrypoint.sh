@@ -15,12 +15,20 @@
 #   RESIDENT_EXPERTS         1 (default): keep only the experts the GPU does not hold in RAM; 0: keep all of them in
 #                            RAM, which is faster but leaves no room for the conversation cache on a 64 GB host
 #   CONVERSATION_CACHE_MIB   RAM for parked conversations (default 8192); CONVERSATION_CACHE_SLOTS (default 4)
-#   PCIE_FRAC, SPEC_MIN_P    from `xestrata --calibrate` on the reference machine (defaults 0.75 and 0.70)
+#   PCIE_FRAC                the share of the experts outside VRAM that the GPU reads over PCIe instead of the CPU
+#                            computing them (default 0.20, measured on the reference machine; auto: the engine
+#                            measures a split at each start)
+#   SPEC_MIN_P               the draft-token floor for MTP (default 0.70)
+#   POOL_WORKERS             CPU expert threads (default 24, measured on the reference's 32 cores); ignored when the
+#                            CPU has no more physical cores than that, and empty or 0 means the engine's default,
+#                            every physical core but one
 #   VISION_MAX_TOKENS        image tokens per picture (default 1024)
 #   VISION_THREADS           CPU image encoder threads (default the number of physical cores)
 #   VISION_GPU               1: the image encoder on the GPU through Vulkan (700 MiB more VRAM reserve, so fewer
 #                            expert slots); default the CPU encoder. GPU_PCI picks the GPU (default the one on xe).
 #   ENGINE_ARGS              extra engine arguments, appended
+#   ENGINE_ENV               JSON engine environment, merged over the defaults {"STRATA_HC_Q8": "1",
+#                            "STRATA_ROUTE_TAIL_SKIP": "0"} (docs/settings.md)
 set -euo pipefail
 
 swap_kb=$(awk '/^SwapTotal:/ {print $2}' /proc/meminfo)
@@ -76,13 +84,21 @@ reserve = int(e.get("VRAM_RESERVE_MIB", "2048")) + (700 if vision_gpu else 0)
 args = ["--pack", f"{share}/packs/{tag}", "--native", e["SHARD1"], "--ple-gguf", e["PLE"],
         "--expert-profile", "/usr/share/xestrata/data/expert-profile.bin", "--expert-cache", "auto", "--prefill", "auto",
         "--spec", "4", "--mtp", f"{share}/mtp/rt", "--max-context", e.get("MAX_CONTEXT", "262144"), "--kv", "int8",
-        "--vision", "--vram-reserve-mib", str(reserve),
-        "--pcie-frac", e.get("PCIE_FRAC", "0.75"), "--spec-min-p", e.get("SPEC_MIN_P", "0.70")]
+        "--vision", "--vram-reserve-mib", str(reserve)]
+if (e.get("PCIE_FRAC") or "0.20") != "auto":
+    args += ["--pcie-frac", e.get("PCIE_FRAC") or "0.20"]
+args += ["--spec-min-p", e.get("SPEC_MIN_P") or "0.70"]
 if e.get("RESIDENT_EXPERTS", "1") == "1":
     args.append("--resident-experts")
 if int(e.get("CONVERSATION_CACHE_MIB", "8192")) > 0:
     args += ["--conversation-cache-mib", e.get("CONVERSATION_CACHE_MIB", "8192"),
              "--conversation-cache-slots", e.get("CONVERSATION_CACHE_SLOTS", "4")]
+workers, cores = int(e.get("POOL_WORKERS", "24") or 0), physical_cores()
+if 0 < workers < cores:
+    args += ["--pool-workers", str(workers)]
+elif workers:
+    print(f"recipe: POOL_WORKERS={workers} is not below this CPU's {cores} physical cores; the engine's default",
+          flush=True)
 args += shlex.split(e.get("ENGINE_ARGS", ""))
 
 engine = "/usr/lib/x86_64-linux-gnu/xestrata/engine"
@@ -92,13 +108,16 @@ cpu_vision = {"mmproj": e["MMPROJ"], "model": e["SHARD1"], "exe": f"{engine}/str
               "threads": int(e.get("VISION_THREADS") or physical_cores())}
 cfg = {"exe": f"{engine}/strata", "args": args, "cwd": state, "tokenizer": f"{share}/packs/{tag}/tokenizer",
        "model_name": e.get("SERVED_NAME") or "qwen38", "log": f"{state}/xestrata-{tag}.log",
-       "lib_dirs": [f"{engine}/lib", "/opt/intel/oneapi/mkl/2026.1/lib"], "port": 8000, "host": "0.0.0.0",
+       "lib_dirs": [f"{engine}/lib", e["XESTRATA_MKL_LIB"]], "port": 8000, "host": "0.0.0.0",
        "open_browser": False, "api_key": e["API_KEY"],
        # Claude Code asks for 32,000 output tokens on every request; near the end of the window that is a 400
        # unless the server clamps the cap to what is left
        "fit_max_tokens": True,
        "sampling": json.loads(e.get("SAMPLING") or '{"temperature": 1.0, "top_p": 0.95, "top_k": 20}'),
-       "vision": cpu_vision}
+       "vision": cpu_vision,
+       # Q8_0 hyper-connections: the engine would time them against BF16 at each start and may pick either; route tail
+       # skip (on by default) leaves out low-weight experts, measurably worse output for 1% speed
+       "env": {"STRATA_HC_Q8": "1", "STRATA_ROUTE_TAIL_SKIP": "0", **json.loads(e.get("ENGINE_ENV") or "{}")}}
 if vision_gpu:  # as XeStrata's setup writes it for --vision gpu: the Vulkan encoder, the CPU one as its fallback
     cfg["vision"] = {"mmproj": e["MMPROJ"], "model": e["SHARD1"], "exe": f"{engine}/strata-vision-vulkan", "gpu": True,
                      "gpu_pci": e.get("GPU_PCI") or xe_gpu(), "max_tokens": cpu_vision["max_tokens"],
@@ -112,7 +131,7 @@ with open(path, "w") as f:
     json.dump(cfg, f, indent=1)
 os.chmod(path, 0o600)
 os.utime(path)  # `xestrata` starts the most recently used model config
-print("recipe: engine args:", " ".join(args), "| sampling:", cfg["sampling"],
+print("recipe: engine args:", " ".join(args), "| engine env:", cfg["env"], "| sampling:", cfg["sampling"],
       "| vision:", "gpu" if vision_gpu else f"cpu, {cpu_vision['threads']} threads", flush=True)
 PY
 exec xestrata

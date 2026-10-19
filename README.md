@@ -10,21 +10,21 @@ Threadripper 3970X, 64 GB DDR4-3200, Arc Pro B70 on PCIe 4.0 x16, Ubuntu 26.04 (
 
 | | |
 |---|---|
-| Decode, warm 4K code prompt | 68 to 80 tok/s with thinking off, 58 to 60 tok/s at xhigh |
-| Cold prompt | 8.5K tokens in 5.5 s, 34K in 21.4 s, 68K in 32.2 s |
-| 250K-token prompt | 116 s cold, 0.5 s cached, 3 of 3 retrieval checks, decode 70 to 85 tok/s |
+| Decode, warm 4K code prompt | 89 tok/s with thinking off, 66 tok/s at xhigh |
+| Cold prompt | 8.5K tokens in 4.6 s, 34K in 15.7 s, 68K in 30.9 s |
+| 250K-token prompt | 116 s cold, 3.4 s for the same prompt again, 0.4 s for a follow-up, 3 of 3 retrieval checks, decode 74 to 83 tok/s |
 | Images | 28 of 30 questions on dense 2560x1600 screenshots |
-| Load time | 55 to 56 s |
+| Load time | 95 s |
 | Real 2026 bug fixes through Claude Code | 15 of 16 in 4,021 s (Qwen3.8-27B on the same card: 15 of 16 in 7,310 s) |
 | Aider polyglot, Python, offline | 31 of 34 (27B: 27 of 34) |
 
-Method, spread between runs and the full numbers: [docs/results.md](docs/results.md).
+The first five rows are from 2026-10-19, XeStrata xe0.1.45-1 with this repository's defaults. The image and coding rows were measured on 2026-10-11 with xe0.1.40.2.2 and the earlier settings, which decoded 68 to 80 tok/s and read a 34K prompt in 21.4 s on the same bench. Method, spread between runs and the full numbers: [docs/results.md](docs/results.md).
 
 ## Requirements
 
 - Intel Arc Pro B70 on the in-kernel `xe` driver, with Resizable BAR on
 - x86_64 CPU with AVX2; core count and memory bandwidth set the decode speed
-- 64 GB of RAM (the recipe uses about 31 GiB after load)
+- 64 GB of RAM (the engine locks about 37 GiB; about 18 GiB stays available after load)
 - About 95 GB of disk: 84 GB of model files and 10 GB of engine state
 - Docker with the Compose plugin
 
@@ -36,7 +36,7 @@ scripts/check-host.sh             # hardware, driver, RAM, disk, Docker
 scripts/download-model.sh         # 84 GB at a pinned revision, SHA-256 checked
 docker compose build
 scripts/setup.sh                  # XeStrata's installer: model pack and MTP draft layer
-docker compose up -d              # loads in about a minute
+docker compose up -d              # loads in about two minutes
 scripts/smoke_test.py             # expect 26 of 26
 scripts/bench.py                  # compare with docs/results.md
 ```

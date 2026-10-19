@@ -4,7 +4,7 @@ name: qwen38-flash-next
 services:
   qwen38:
     build: ./docker
-    image: ${IMAGE:-local/xestrata-qwen38:xe0.1.40.2.2}
+    image: ${IMAGE:-local/xestrata-qwen38:xe0.1.45-1}
     container_name: ${CONTAINER_NAME:-qwen38-flash-next}
     restart: unless-stopped
     # XeStrata's launcher ignores SIGTERM as PID 1, so without an init every stop waits the full grace period and
@@ -28,13 +28,15 @@ services:
       RESIDENT_EXPERTS: ${RESIDENT_EXPERTS:-1}
       CONVERSATION_CACHE_MIB: ${CONVERSATION_CACHE_MIB:-8192}
       CONVERSATION_CACHE_SLOTS: ${CONVERSATION_CACHE_SLOTS:-4}
-      PCIE_FRAC: ${PCIE_FRAC:-0.75}
+      PCIE_FRAC: ${PCIE_FRAC:-0.20}
       SPEC_MIN_P: ${SPEC_MIN_P:-0.70}
+      POOL_WORKERS: ${POOL_WORKERS:-24}
       VISION_MAX_TOKENS: ${VISION_MAX_TOKENS:-1024}
       VISION_THREADS: ${VISION_THREADS:-}
       VISION_GPU: ${VISION_GPU:-0}
       GPU_PCI: ${GPU_PCI:-}
       ENGINE_ARGS: ${ENGINE_ARGS:-}
+      ENGINE_ENV: ${ENGINE_ENV:-}
     volumes:
       - /dev/dri/by-path:/dev/dri/by-path:ro
       - ${MODELS_DIR:?set MODELS_DIR in .env}:/models:ro
